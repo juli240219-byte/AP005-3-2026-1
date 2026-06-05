@@ -1,0 +1,5 @@
+# Archivos con claves privadas
+.env
+config_real.py
+*.key
+

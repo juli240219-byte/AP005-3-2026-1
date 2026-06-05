@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Monitor Analógico ESP32</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@300;400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:       #0d1117;
+      --surface:  #161b22;
+      --border:   #30363d;
+      --accent:   #58a6ff;
+      --green:    #3fb950;
+      --orange:   #f0883e;
+      --red:      #f85149;
+      --text:     #e6edf3;
+      --muted:    #8b949e;
+      --radius:   10px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Space Grotesk', sans-serif;
+      min-height: 100vh;
+      padding: 2rem 1.5rem;
+    }
+    header {
+      max-width: 1100px; margin: 0 auto 2.5rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1.5rem;
+      display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 1rem;
+    }
+    header h1 { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.5px; }
+    header h1 span { color: var(--accent); }
+    .tag {
+      display: inline-block; padding: .25rem .75rem;
+      border-radius: 999px; font-size: .78rem; font-weight: 600;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .tag-normal { background: rgba(63,185,80,.15); color: var(--green);  border: 1px solid var(--green); }
+    .tag-bajo   { background: rgba(88,166,255,.15); color: var(--accent); border: 1px solid var(--accent); }
+    .tag-alto   { background: rgba(248,81,73,.15);  color: var(--red);   border: 1px solid var(--red); }
+    .tag-sin    { background: rgba(139,148,158,.1); color: var(--muted); border: 1px solid var(--border); }
+
+    main { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 2rem; }
+
+    .info-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;
+    }
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1.25rem 1.5rem;
+    }
+    .card-label { font-size: .75rem; color: var(--muted); text-transform: uppercase;
+                  letter-spacing: .08em; margin-bottom: .4rem; }
+    .card-value { font-family: 'JetBrains Mono', monospace; font-size: 1.6rem;
+                  font-weight: 600; color: var(--accent); }
+    .card-unit  { font-size: .85rem; color: var(--muted); margin-left: .25rem; }
+
+    .stats-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem;
+    }
+    .stat { background: var(--surface); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 1rem 1.2rem; }
+    .stat-label { font-size: .72rem; color: var(--muted); text-transform: uppercase;
+                  letter-spacing: .07em; margin-bottom: .3rem; }
+    .stat-val   { font-family: 'JetBrains Mono', monospace; font-size: 1.15rem;
+                  font-weight: 600; }
+
+    h2 { font-size: 1rem; font-weight: 600; color: var(--muted);
+         text-transform: uppercase; letter-spacing: .1em; margin-bottom: 1rem; }
+
+    .plots { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; }
+    .plot-card { background: var(--surface); border: 1px solid var(--border);
+                 border-radius: var(--radius); overflow: hidden; }
+    .plot-card img { width: 100%; display: block; }
+    .plot-label { padding: .6rem 1rem; font-size: .8rem; color: var(--muted); }
+
+    .footer-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @media (max-width: 600px) { .footer-grid { grid-template-columns: 1fr; } }
+    .info-row { display: flex; justify-content: space-between; align-items: center;
+                padding: .5rem 0; border-bottom: 1px solid var(--border); font-size: .88rem; }
+    .info-row:last-child { border-bottom: none; }
+    .info-key { color: var(--muted); }
+    .info-val { font-family: 'JetBrains Mono', monospace; color: var(--text); }
+
+    .ts-ok   { color: var(--green); }
+    .ts-fail { color: var(--red); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Monitor Analógico <span>ESP32</span></h1>
+    <p style="color:var(--muted);font-size:.9rem;margin-top:.3rem;">
+      Potenciómetro · GPIO34 · 115200 bps
+    </p>
+  </div>
+  {% set estado = stats.estado %}
+  {% if estado == "NORMAL" %}
+    <span class="tag tag-normal">● {{ estado }}</span>
+  {% elif estado == "BAJO" %}
+    <span class="tag tag-bajo">▼ {{ estado }}</span>
+  {% elif estado == "ALTO" %}
+    <span class="tag tag-alto">▲ {{ estado }}</span>
+  {% else %}
+    <span class="tag tag-sin">○ {{ estado }}</span>
+  {% endif %}
+</header>
+
+<main>
+
+  <!-- Última lectura -->
+  <section>
+    <h2>Última lectura</h2>
+    <div class="info-grid">
+      <div class="card">
+        <div class="card-label">Valor ADC</div>
+        <div class="card-value">{{ stats.ultimo_adc }}<span class="card-unit">/ 4095</span></div>
+      </div>
+      <div class="card">
+        <div class="card-label">Voltaje</div>
+        <div class="card-value">{{ "%.3f"|format(stats.ultimo_voltaje) }}<span class="card-unit">V</span></div>
+      </div>
+      <div class="card">
+        <div class="card-label">Muestras totales</div>
+        <div class="card-value">{{ stats.n }}</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Estadísticas -->
+  <section>
+    <h2>Estadísticas</h2>
+    <div class="stats-grid">
+      <div class="stat"><div class="stat-label">Promedio</div>
+        <div class="stat-val" style="color:var(--orange)">{{ stats.promedio }} V</div></div>
+      <div class="stat"><div class="stat-label">Mínimo</div>
+        <div class="stat-val" style="color:var(--accent)">{{ stats.minimo }} V</div></div>
+      <div class="stat"><div class="stat-label">Máximo</div>
+        <div class="stat-val" style="color:var(--accent)">{{ stats.maximo }} V</div></div>
+      <div class="stat"><div class="stat-label">Desv. estándar</div>
+        <div class="stat-val" style="color:var(--muted)">{{ stats.desv_std }} V</div></div>
+    </div>
+  </section>
+
+  <!-- Gráficas -->
+  <section>
+    <h2>Gráficas</h2>
+    <div class="plots">
+      <div class="plot-card">
+        <img src="/static/plots/sensor_tiempo.png" alt="Señal en el tiempo" />
+        <div class="plot-label">Señal del potenciómetro en el tiempo</div>
+      </div>
+      <div class="plot-card">
+        <img src="/static/plots/histograma.png" alt="Histograma" />
+        <div class="plot-label">Distribución de voltajes</div>
+      </div>
+      <div class="plot-card">
+        <img src="/static/plots/promedio_movil.png" alt="Promedio móvil" />
+        <div class="plot-label">Promedio móvil de la señal</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Info del sistema + ThingSpeak -->
+  <section>
+    <div class="footer-grid">
+      <div class="card">
+        <h2 style="margin-bottom:.8rem">Información del sistema</h2>
+        <div class="info-row"><span class="info-key">Sensor</span>
+          <span class="info-val">Potenciómetro 10kΩ</span></div>
+        <div class="info-row"><span class="info-key">Pin ADC</span>
+          <span class="info-val">GPIO34 (ADC1_CH6)</span></div>
+        <div class="info-row"><span class="info-key">Resolución</span>
+          <span class="info-val">12 bits (0–4095)</span></div>
+        <div class="info-row"><span class="info-key">Rango voltaje</span>
+          <span class="info-val">0 – 3.3 V</span></div>
+        <div class="info-row"><span class="info-key">Umbral BAJO</span>
+          <span class="info-val">&lt; 1.1 V</span></div>
+        <div class="info-row"><span class="info-key">Umbral ALTO</span>
+          <span class="info-val">&gt; 2.2 V</span></div>
+        <div class="info-row"><span class="info-key">Socket TCP</span>
+          <span class="info-val">127.0.0.1:9000</span></div>
+      </div>
+      <div class="card">
+        <h2 style="margin-bottom:.8rem">ThingSpeak</h2>
+        <div class="info-row"><span class="info-key">Último envío</span>
+          <span class="info-val">{{ ts.ultimo_envio }}</span></div>
+        <div class="info-row"><span class="info-key">Estado</span>
+          <span class="info-val {% if 'OK' in ts.ultimo_estado %}ts-ok{% else %}ts-fail{% endif %}">
+            {{ ts.ultimo_estado }}</span></div>
+        <div class="info-row"><span class="info-key">field1</span>
+          <span class="info-val">Último ADC</span></div>
+        <div class="info-row"><span class="info-key">field2</span>
+          <span class="info-val">Último voltaje</span></div>
+        <div class="info-row"><span class="info-key">field3</span>
+          <span class="info-val">Promedio móvil</span></div>
+        <div class="info-row"><span class="info-key">field4</span>
+          <span class="info-val">Estado numérico</span></div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+</body>
+</html>
